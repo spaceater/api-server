@@ -35,12 +35,6 @@ func UnregisterClient(conn *websocket.Conn) {
 // broadcastOnlineCountLocked 广播在线用户数量（假设已持有锁）
 func broadcastOnlineCountLocked() {
 	count := len(clients)
-	// 创建clients的副本，避免在发送过程中clients被修改
-	clientsCopy := make([]*websocket.Conn, 0, len(clients))
-	for conn := range clients {
-		clientsCopy = append(clientsCopy, conn)
-	}
-
 	// 直接使用map构建JSON消息
 	data, err := json.Marshal(map[string]int{"online_count": count})
 	if err != nil {
@@ -48,14 +42,15 @@ func broadcastOnlineCountLocked() {
 		return
 	}
 
-	// 在goroutine中发送，避免阻塞锁
-	go func() {
-		for _, conn := range clientsCopy {
-			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-				UnregisterClient(conn)
-			}
+	// 直接在锁内广播，避免并发写入
+	for conn := range clients {
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			log.Printf("Write message error: %v", err)
+			// 写入失败的连接将被标记为需要清理
+			delete(clients, conn)
+			conn.Close()
 		}
-	}()
+	}
 }
 
 // HandleWebSocket 处理 WebSocket 连接
