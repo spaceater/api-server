@@ -35,9 +35,6 @@ Thumbs.db
 # Log files
 *.log
 
-# Page view data file
-page-view.txt
-
 # Environment files
 .env
 .env.local
