@@ -84,10 +84,3 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 }
-
-// GetOnlineCount 获取当前在线用户数量
-func GetOnlineCount() int {
-	clientsMux.RLock()
-	defer clientsMux.RUnlock()
-	return len(clients)
-}

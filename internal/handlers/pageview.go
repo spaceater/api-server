@@ -21,8 +21,7 @@ func PageViewHandler(w http.ResponseWriter, r *http.Request) {
 	pageViewMutex.Lock()
 	defer pageViewMutex.Unlock()
 
-	appConfig := config.Load()
-	pageViewFile := appConfig.PageViewFile
+	pageViewFile := config.PageViewFile
 
 	// 读取当前页面访问计数
 	data, err := os.ReadFile(pageViewFile)
