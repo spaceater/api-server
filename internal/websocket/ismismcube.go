@@ -1,7 +1,7 @@
 package ws
 
 import (
-	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -10,15 +10,15 @@ import (
 )
 
 var (
-	ismismcubeClients    = make(map[*websocket.Conn]struct{})
+	ismismcubeClients    = make(map[*websocket.Conn]*ClientInfo)
 	ismismcubeClientsMux sync.RWMutex
 )
 
 func RegisterIsmismcubeClient(conn *websocket.Conn) {
 	ismismcubeClientsMux.Lock()
 	defer ismismcubeClientsMux.Unlock()
-	ismismcubeClients[conn] = struct{}{}
-	broadcastOnlineCount()
+	ismismcubeClients[conn] = &ClientInfo{}
+	go broadcastOnlineCount()
 }
 
 func UnregisterIsmismcubeClient(conn *websocket.Conn) {
@@ -27,22 +27,30 @@ func UnregisterIsmismcubeClient(conn *websocket.Conn) {
 	if _, ok := ismismcubeClients[conn]; ok {
 		delete(ismismcubeClients, conn)
 		conn.Close()
-		broadcastOnlineCount()
+		go broadcastOnlineCount()
 	}
 }
 
 func broadcastOnlineCount() {
-	count := len(ismismcubeClients)
-	data, err := json.Marshal(map[string]int{"online_count": count})
-	if err != nil {
-		log.Printf("JSON marshal error: %v", err)
-		return
-	}
+	ismismcubeClientsMux.RLock()
+	data := []byte(fmt.Sprintf("broadcast:[online:%d]", len(ismismcubeClients)))
+	clients := make([]*websocket.Conn, 0, len(ismismcubeClients))
 	for conn := range ismismcubeClients {
+		clients = append(clients, conn)
+	}
+	ismismcubeClientsMux.RUnlock()
+	for _, conn := range clients {
+		ismismcubeClientsMux.RLock()
+		clientInfo, exists := ismismcubeClients[conn]
+		ismismcubeClientsMux.RUnlock()
+		if !exists {
+			continue
+		}
+		clientInfo.WriteMutex.Lock()
+		defer clientInfo.WriteMutex.Unlock()
 		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 			log.Printf("Write message error: %v", err)
-			delete(ismismcubeClients, conn)
-			conn.Close()
+			go UnregisterIsmismcubeClient(conn)
 		}
 	}
 }
