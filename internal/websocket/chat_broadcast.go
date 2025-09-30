@@ -2,6 +2,8 @@ package ws
 
 import (
 	"encoding/json"
+	"fmt"
+	"ismismcube-backend/internal/config"
 	"ismismcube-backend/internal/server"
 	"log"
 	"net/http"
@@ -10,68 +12,72 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type ClientInfo struct {
+	WriteMutex sync.Mutex
+}
+
 var (
-	chatClients    = make(map[*websocket.Conn]struct{})
+	chatClients    = make(map[*websocket.Conn]*ClientInfo)
 	chatClientsMux sync.RWMutex
 )
 
 type WebSocketBroadcaster struct{}
 
 func (w *WebSocketBroadcaster) BroadcastQueueStats(waiting, executing int) {
-	chatClientsMux.Lock()
-	defer chatClientsMux.Unlock()
 	broadcastQueueStats(waiting, executing)
 }
 
-func RegisterBroadcastClient(conn *websocket.Conn, waiting, executing int) {
+func RegisterChatClient(conn *websocket.Conn, waiting, executing int) {
 	chatClientsMux.Lock()
 	defer chatClientsMux.Unlock()
-	chatClients[conn] = struct{}{}
-	data, err := json.Marshal(map[string]interface{}{
-		"waiting_count":   waiting,
-		"executing_count": executing,
-	})
+	chatClients[conn] = &ClientInfo{}
+	go sendQueueStats(conn, []byte(fmt.Sprintf("broadcast:[waiting_count:%d,executing_count:%d]", waiting, executing)))
+	message := map[string]interface{}{
+		"max_concurrent_tasks": config.LLMConfigure.MaxConcurrentTasks,
+		"available_models":     config.LLMConfigure.AvailableModels,
+	}
+	jsonData, err := json.Marshal(message)
 	if err != nil {
-		log.Printf("JSON marshal error: %v", err)
 		return
 	}
-	sendQueueStatus(conn, data)
+	data := []byte(fmt.Sprintf("server-config:%s", string(jsonData)))
+	go sendQueueStats(conn, data)
 }
 
-func UnregisterBroadcastClient(conn *websocket.Conn) {
+func broadcastQueueStats(waiting, executing int) {
+	chatClientsMux.RLock()
+	clients := make([]*websocket.Conn, 0, len(chatClients))
+	for conn := range chatClients {
+		clients = append(clients, conn)
+	}
+	chatClientsMux.RUnlock()
+	data := []byte(fmt.Sprintf("broadcast:[waiting_count:%d,executing_count:%d]", waiting, executing))
+	for _, conn := range clients {
+		sendQueueStats(conn, data)
+	}
+}
+
+func sendQueueStats(conn *websocket.Conn, data []byte) {
+	chatClientsMux.RLock()
+	clientInfo, exists := chatClients[conn]
+	chatClientsMux.RUnlock()
+	if !exists {
+		return
+	}
+	clientInfo.WriteMutex.Lock()
+	defer clientInfo.WriteMutex.Unlock()
+	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+		log.Printf("Write message error: %v", err)
+		go UnregisterChatClient(conn)
+	}
+}
+
+func UnregisterChatClient(conn *websocket.Conn) {
 	chatClientsMux.Lock()
 	defer chatClientsMux.Unlock()
 	if _, ok := chatClients[conn]; ok {
 		delete(chatClients, conn)
 		conn.Close()
-	}
-}
-
-// 调用此函数前需要确保chatClientsMux已经锁定
-func sendQueueStatus(conn *websocket.Conn, data []byte) {
-	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-		log.Printf("Write message error: %v", err)
-		delete(chatClients, conn)
-		conn.Close()
-	}
-}
-
-// 调用此函数前需要确保chatClientsMux已经锁定
-func broadcastQueueStats(waiting, executing int) {
-	data, err := json.Marshal(map[string]interface{}{
-		"waiting_count":   waiting,
-		"executing_count": executing,
-	})
-	if err != nil {
-		log.Printf("JSON marshal error: %v", err)
-		return
-	}
-	clients := make([]*websocket.Conn, 0, len(chatClients))
-	for conn := range chatClients {
-		clients = append(clients, conn)
-	}
-	for _, conn := range clients {
-		sendQueueStatus(conn, data)
 	}
 }
 
@@ -87,10 +93,10 @@ func HandleChatBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	waiting, executing := server.GetTaskManager().GetQueueCount()
-	RegisterBroadcastClient(conn, waiting, executing)
+	RegisterChatClient(conn, waiting, executing)
 	go func() {
 		defer func() {
-			UnregisterBroadcastClient(conn)
+			UnregisterChatClient(conn)
 		}()
 		for {
 			_, _, err := conn.ReadMessage()
