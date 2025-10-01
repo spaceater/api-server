@@ -26,6 +26,7 @@ func UnregisterIsmismcubeClient(conn *websocket.Conn) {
 	defer ismismcubeClientsMux.Unlock()
 	if _, ok := ismismcubeClients[conn]; ok {
 		delete(ismismcubeClients, conn)
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		conn.Close()
 		go broadcastOnlineCount()
 	}

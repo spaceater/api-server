@@ -2,10 +2,10 @@ package server
 
 import (
 	"bytes"
-	"log"
 	"fmt"
 	"io"
 	"ismismcube-backend/internal/config"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -18,7 +18,7 @@ type ChatTask struct {
 	Content       []byte          `json:"-"`
 	WebSocketID   string          `json:"websocket_id"`
 	WebSocketConn *websocket.Conn `json:"-"`
-	WriteMutex         sync.Mutex      `json:"-"`
+	WriteMutex    sync.Mutex      `json:"-"`
 }
 
 type QueueBroadcaster interface {
@@ -96,6 +96,7 @@ func (tm *TaskManager) UnregisterTaskConnection(websocketID string) {
 	for i, task := range tm.waitingTasks {
 		if task.WebSocketID == websocketID {
 			if task.WebSocketConn != nil {
+				task.WebSocketConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 				task.WebSocketConn.Close()
 				task.WebSocketConn = nil
 			}
@@ -108,6 +109,7 @@ func (tm *TaskManager) UnregisterTaskConnection(websocketID string) {
 	// 执行中的任务断开后保留在executingTasks中，留给callLLM处理
 	if task, exists := tm.executingTasks[websocketID]; exists {
 		if task.WebSocketConn != nil {
+			task.WebSocketConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			task.WebSocketConn.Close()
 			task.WebSocketConn = nil
 		}
@@ -145,7 +147,9 @@ func (tm *TaskManager) checkTasks() {
 func (tm *TaskManager) executeTask(task *ChatTask) {
 	defer func() {
 		if task.WebSocketConn != nil {
+			task.WebSocketConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			task.WebSocketConn.Close()
+			task.WebSocketConn = nil
 		}
 		tm.mutex.Lock()
 		delete(tm.executingTasks, task.WebSocketID)
@@ -178,7 +182,7 @@ func (tm *TaskManager) callLLM(task *ChatTask) {
 	req.Header.Set("Authorization", "Bearer "+config.LLMConfigure.ApiKey)
 	resp, err := client.Do(req)
 	if err != nil {
-    log.Println("Failed to send request to AI API", err)
+		log.Println("Failed to send request to AI API", err)
 		conn.WriteMessage(websocket.TextMessage, []byte("data: {\"error\": \"Failed to send request to AI API\"}\n\n"))
 		return
 	}
