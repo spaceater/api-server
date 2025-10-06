@@ -11,6 +11,7 @@ func RegisterApi() {
 	router.Url("/ping", handler.Ping)
 	router.UrlGroup("/api",
 		router.Url("/page_view", handler.PageViewHandler).Use(middleware.NoCache),
+    router.Url("/executed_task", handler.ExecutedTaskHandler).Use(middleware.NoCache),
 		router.Url("/send_chat", handler.ChatHandler),
 	).Use(middleware.CORS)
 	router.UrlGroup("/ws",

@@ -22,15 +22,22 @@ type ChatTask struct {
 }
 
 type QueueBroadcaster interface {
-	BroadcastQueueStats(waiting, executing int)
+	BroadcastQueueStats(waiting, executing int, broadcastFlag int64)
+}
+
+type ExecutedTaskIncrementer interface {
+	IncrementExecutedTask() error
 }
 
 type TaskManager struct {
 	pendingTasks   map[string]*ChatTask
 	waitingTasks   []*ChatTask
 	executingTasks map[string]*ChatTask
-	mutex          sync.RWMutex
+	taskMutex      sync.RWMutex
 	broadcaster    QueueBroadcaster
+	broadcastFlag  int64
+	broadcastMutex sync.Mutex
+	incrementer    ExecutedTaskIncrementer
 }
 
 var (
@@ -41,13 +48,14 @@ func GetTaskManager() *TaskManager {
 	return taskManager
 }
 
-func InitTaskManager(broadcaster QueueBroadcaster) {
+func InitTaskManager(broadcaster QueueBroadcaster, incrementer ExecutedTaskIncrementer) {
 	taskManager = &TaskManager{
 		pendingTasks:   make(map[string]*ChatTask),
 		waitingTasks:   make([]*ChatTask, 0),
 		executingTasks: make(map[string]*ChatTask),
 	}
 	taskManager.broadcaster = broadcaster
+	taskManager.incrementer = incrementer
 }
 
 func (tm *TaskManager) CreateChatTask(content []byte, websocketID string) {
@@ -56,28 +64,28 @@ func (tm *TaskManager) CreateChatTask(content []byte, websocketID string) {
 		Content:     content,
 		WebSocketID: websocketID,
 	}
-	tm.mutex.Lock()
+	tm.taskMutex.Lock()
 	tm.pendingTasks[websocketID] = task
-	tm.mutex.Unlock()
+	tm.taskMutex.Unlock()
 	// 必须创建一个新的goroutine，防止CreateChatTask被阻塞
 	go func() {
 		timer := time.NewTimer(10 * time.Second)
 		defer timer.Stop()
 		<-timer.C
-		tm.mutex.Lock()
+		tm.taskMutex.Lock()
 		delete(tm.pendingTasks, websocketID)
-		tm.mutex.Unlock()
+		tm.taskMutex.Unlock()
 	}()
 }
 
 func (tm *TaskManager) RegisterTaskConnection(websocketID string, conn *websocket.Conn) {
-	tm.mutex.Lock()
-	defer tm.mutex.Unlock()
+	tm.taskMutex.Lock()
+	defer tm.taskMutex.Unlock()
 	if task, exists := tm.pendingTasks[websocketID]; exists {
 		task.WebSocketConn = conn
 		tm.waitingTasks = append(tm.waitingTasks, task)
 		delete(tm.pendingTasks, websocketID)
-		go tm.broadcaster.BroadcastQueueStats(len(tm.waitingTasks), len(tm.executingTasks))
+		go tm.broadcaster.BroadcastQueueStats(len(tm.waitingTasks), len(tm.executingTasks), tm.GetBroadcastFlag())
 		go tm.sendTaskPosition(task, len(tm.waitingTasks)-1)
 		// 触发任务调度
 		go tm.checkTasks()
@@ -91,17 +99,18 @@ func (tm *TaskManager) RegisterTaskConnection(websocketID string, conn *websocke
 }
 
 func (tm *TaskManager) UnregisterTaskConnection(websocketID string) {
-	tm.mutex.Lock()
-	defer tm.mutex.Unlock()
+	tm.taskMutex.Lock()
+	defer tm.taskMutex.Unlock()
 	for i, task := range tm.waitingTasks {
 		if task.WebSocketID == websocketID {
 			if task.WebSocketConn != nil {
+				task.WriteMutex.Lock()
 				task.WebSocketConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-				task.WebSocketConn.Close()
+				task.WriteMutex.Unlock()
 				task.WebSocketConn = nil
 			}
 			tm.waitingTasks = append(tm.waitingTasks[:i], tm.waitingTasks[i+1:]...)
-			go tm.broadcaster.BroadcastQueueStats(len(tm.waitingTasks), len(tm.executingTasks))
+			go tm.broadcaster.BroadcastQueueStats(len(tm.waitingTasks), len(tm.executingTasks), tm.GetBroadcastFlag())
 			go tm.broadcastTasksPositions()
 			return
 		}
@@ -109,8 +118,9 @@ func (tm *TaskManager) UnregisterTaskConnection(websocketID string) {
 	// 执行中的任务断开后保留在executingTasks中，留给callLLM处理
 	if task, exists := tm.executingTasks[websocketID]; exists {
 		if task.WebSocketConn != nil {
+			task.WriteMutex.Lock()
 			task.WebSocketConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			task.WebSocketConn.Close()
+			task.WriteMutex.Unlock()
 			task.WebSocketConn = nil
 		}
 		return
@@ -118,8 +128,8 @@ func (tm *TaskManager) UnregisterTaskConnection(websocketID string) {
 }
 
 func (tm *TaskManager) checkTasks() {
-	tm.mutex.Lock()
-	defer tm.mutex.Unlock()
+	tm.taskMutex.Lock()
+	defer tm.taskMutex.Unlock()
 	if len(tm.executingTasks) >= config.LLMConfigure.MaxConcurrentTasks {
 		return
 	}
@@ -140,39 +150,58 @@ func (tm *TaskManager) checkTasks() {
 	}
 	if tasksScheduled {
 		go tm.broadcastTasksPositions()
-		go tm.broadcaster.BroadcastQueueStats(len(tm.waitingTasks), len(tm.executingTasks))
+		go tm.broadcaster.BroadcastQueueStats(len(tm.waitingTasks), len(tm.executingTasks), tm.GetBroadcastFlag())
 	}
 }
 
 func (tm *TaskManager) executeTask(task *ChatTask) {
+	if tm.incrementer != nil {
+		tm.incrementer.IncrementExecutedTask()
+	}
 	defer func() {
 		if task.WebSocketConn != nil {
+			task.WriteMutex.Lock()
 			task.WebSocketConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-			task.WebSocketConn.Close()
+			task.WriteMutex.Unlock()
 			task.WebSocketConn = nil
 		}
-		tm.mutex.Lock()
+		tm.taskMutex.Lock()
 		delete(tm.executingTasks, task.WebSocketID)
-		tm.mutex.Unlock()
-		go tm.broadcaster.BroadcastQueueStats(tm.GetQueueCount())
+		tm.taskMutex.Unlock()
+		waiting, executing := tm.GetQueueCount()
+		go tm.broadcaster.BroadcastQueueStats(waiting, executing, tm.GetBroadcastFlag())
 		go tm.checkTasks()
+	}()
+	timeoutMinutes := config.LLMConfigure.Timeout
+	timer := time.NewTimer(time.Duration(timeoutMinutes) * time.Minute)
+	defer timer.Stop()
+	go func() {
+		<-timer.C
+		if task.WebSocketConn != nil {
+			errorMsg := []byte(fmt.Sprintf("data: {\"error\": \"Task timed out after %d minutes\"}\n\n", timeoutMinutes))
+			task.WriteMutex.Lock()
+			task.WebSocketConn.WriteMessage(websocket.TextMessage, errorMsg)
+			task.WriteMutex.Unlock()
+		}
 	}()
 	tm.callLLM(task)
 }
 
 func (tm *TaskManager) callLLM(task *ChatTask) {
-	tm.mutex.RLock()
+	tm.taskMutex.RLock()
 	conn := task.WebSocketConn
-	tm.mutex.RUnlock()
+	tm.taskMutex.RUnlock()
 	if conn == nil {
 		return
 	}
 	client := &http.Client{
-		Timeout: 60 * time.Second,
+		Timeout: time.Duration(config.LLMConfigure.Timeout) * time.Minute,
 	}
 	req, err := http.NewRequest("POST", config.LLMConfigure.ApiUrl, bytes.NewBuffer(task.Content))
 	if err != nil {
+		task.WriteMutex.Lock()
 		conn.WriteMessage(websocket.TextMessage, []byte("data: {\"error\": \"Failed to create request\"}\n\n"))
+		task.WriteMutex.Unlock()
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -183,29 +212,35 @@ func (tm *TaskManager) callLLM(task *ChatTask) {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("Failed to send request to AI API", err)
+		task.WriteMutex.Lock()
 		conn.WriteMessage(websocket.TextMessage, []byte("data: {\"error\": \"Failed to send request to AI API\"}\n\n"))
+		task.WriteMutex.Unlock()
 		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		errorBody, _ := io.ReadAll(resp.Body)
 		errorMsg := fmt.Sprintf("data: {\"error\": \"AI API returned status %d: %s\"}\n\n", resp.StatusCode, string(errorBody))
+		task.WriteMutex.Lock()
 		conn.WriteMessage(websocket.TextMessage, []byte(errorMsg))
+		task.WriteMutex.Unlock()
 		return
 	}
 	buffer := make([]byte, 1024)
 	for {
 		n, err := resp.Body.Read(buffer)
-		tm.mutex.RLock()
+		tm.taskMutex.RLock()
 		conn := task.WebSocketConn
-		tm.mutex.RUnlock()
+		tm.taskMutex.RUnlock()
 		if conn == nil {
 			break
 		}
 		if n > 0 {
+			task.WriteMutex.Lock()
 			if err := conn.WriteMessage(websocket.TextMessage, buffer[:n]); err != nil {
 				break
 			}
+			task.WriteMutex.Unlock()
 		}
 		if err == io.EOF {
 			break
@@ -217,18 +252,18 @@ func (tm *TaskManager) callLLM(task *ChatTask) {
 }
 
 func (tm *TaskManager) GetQueueCount() (waiting, executing int) {
-	tm.mutex.RLock()
+	tm.taskMutex.RLock()
 	waiting = len(tm.waitingTasks)
 	executing = len(tm.executingTasks)
-	tm.mutex.RUnlock()
+	tm.taskMutex.RUnlock()
 	return waiting, executing
 }
 
 func (tm *TaskManager) broadcastTasksPositions() {
-	tm.mutex.RLock()
+	tm.taskMutex.RLock()
 	tasks := make([]*ChatTask, len(tm.waitingTasks))
 	copy(tasks, tm.waitingTasks)
-	tm.mutex.RUnlock()
+	tm.taskMutex.RUnlock()
 	for i, task := range tasks {
 		tm.sendTaskPosition(task, i)
 	}
@@ -240,11 +275,19 @@ func (tm *TaskManager) sendTaskPosition(task *ChatTask, position int) {
 		go tm.UnregisterTaskConnection(task.WebSocketID)
 		return
 	}
-	data := []byte(fmt.Sprintf("broadcast:[queue_position:%d]", position))
+	data := []byte(fmt.Sprintf(`broadcast:{"queue_position":%d}`, position))
 	// websocket连接只允许同时传输一个消息，所以需要锁定
 	task.WriteMutex.Lock()
 	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
 		go tm.UnregisterTaskConnection(task.WebSocketID)
 	}
 	task.WriteMutex.Unlock()
+}
+
+func (tm *TaskManager) GetBroadcastFlag() int64 {
+	tm.broadcastMutex.Lock()
+	broadcastFlag := tm.broadcastFlag
+	tm.broadcastFlag++
+	tm.broadcastMutex.Unlock()
+	return broadcastFlag
 }

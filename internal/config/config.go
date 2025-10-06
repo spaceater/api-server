@@ -9,11 +9,13 @@ import (
 var (
 	Port               string
 	PageViewFile       string
+	ExecutedTaskFile   string
 )
 
 func Init() {
 	Port = getEnv("PORT", "2998")
 	PageViewFile = getEnv("PAGE_VIEW_FILE", "./resources/page-view.txt")
+	ExecutedTaskFile = getEnv("EXECUTED_TASK_FILE", "./resources/executed-task.txt")
   InitLLMConfig()
 }
 
