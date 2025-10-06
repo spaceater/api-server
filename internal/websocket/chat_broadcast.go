@@ -23,35 +23,38 @@ var (
 
 type WebSocketBroadcaster struct{}
 
-func (w *WebSocketBroadcaster) BroadcastQueueStats(waiting, executing int) {
-	broadcastQueueStats(waiting, executing)
+func (w *WebSocketBroadcaster) BroadcastQueueStats(waiting, executing int, broadcastFlag int64) {
+	broadcastQueueStats(waiting, executing, broadcastFlag)
 }
 
-func RegisterChatClient(conn *websocket.Conn, waiting, executing int) {
+func RegisterChatClient(conn *websocket.Conn, waiting, executing int, broadcastFlag int64) {
 	chatClientsMux.Lock()
 	defer chatClientsMux.Unlock()
 	chatClients[conn] = &ClientInfo{}
-	go sendQueueStats(conn, []byte(fmt.Sprintf("broadcast:[waiting_count:%d,executing_count:%d]", waiting, executing)))
-	message := map[string]interface{}{
+	go sendQueueStats(conn, []byte(fmt.Sprintf(`broadcast:{"waiting_count":%d,"executing_count":%d,"broadcast_flag":%d}`, waiting, executing, broadcastFlag)))
+  llmConfigData, err := json.Marshal(map[string]interface{}{
 		"max_concurrent_tasks": config.LLMConfigure.MaxConcurrentTasks,
 		"available_models":     config.LLMConfigure.AvailableModels,
-	}
-	jsonData, err := json.Marshal(message)
+	})
 	if err != nil {
 		return
 	}
-	data := []byte(fmt.Sprintf("server-config:%s", string(jsonData)))
-	go sendQueueStats(conn, data)
+	go sendQueueStats(conn, []byte(fmt.Sprintf("server-config:%s", string(llmConfigData))))
+	chatParamsData, err := json.Marshal(config.ChatParameters)
+  if err != nil {
+		return
+	}
+	go sendQueueStats(conn, []byte(fmt.Sprintf("chat-config:%s", string(chatParamsData))))
 }
 
-func broadcastQueueStats(waiting, executing int) {
+func broadcastQueueStats(waiting, executing int, broadcastFlag int64) {
 	chatClientsMux.RLock()
 	clients := make([]*websocket.Conn, 0, len(chatClients))
 	for conn := range chatClients {
 		clients = append(clients, conn)
 	}
 	chatClientsMux.RUnlock()
-	data := []byte(fmt.Sprintf("broadcast:[waiting_count:%d,executing_count:%d]", waiting, executing))
+	data := []byte(fmt.Sprintf(`broadcast:{"waiting_count":%d,"executing_count":%d,"broadcast_flag":%d}`, waiting, executing, broadcastFlag))
 	for _, conn := range clients {
 		sendQueueStats(conn, data)
 	}
@@ -77,7 +80,7 @@ func UnregisterChatClient(conn *websocket.Conn) {
 	defer chatClientsMux.Unlock()
 	if _, ok := chatClients[conn]; ok {
 		delete(chatClients, conn)
-		conn.Close()
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 	}
 }
 
@@ -93,7 +96,8 @@ func HandleChatBroadcast(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	waiting, executing := server.GetTaskManager().GetQueueCount()
-	RegisterChatClient(conn, waiting, executing)
+	broadcastFlag := server.GetTaskManager().GetBroadcastFlag()
+	RegisterChatClient(conn, waiting, executing, broadcastFlag)
 	go func() {
 		defer func() {
 			UnregisterChatClient(conn)

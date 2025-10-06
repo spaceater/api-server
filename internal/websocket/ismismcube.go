@@ -27,14 +27,13 @@ func UnregisterIsmismcubeClient(conn *websocket.Conn) {
 	if _, ok := ismismcubeClients[conn]; ok {
 		delete(ismismcubeClients, conn)
 		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
-		conn.Close()
 		go broadcastOnlineCount()
 	}
 }
 
 func broadcastOnlineCount() {
 	ismismcubeClientsMux.RLock()
-	data := []byte(fmt.Sprintf("broadcast:[online:%d]", len(ismismcubeClients)))
+	data := []byte(fmt.Sprintf(`broadcast:{"online":%d}`, len(ismismcubeClients)))
 	clients := make([]*websocket.Conn, 0, len(ismismcubeClients))
 	for conn := range ismismcubeClients {
 		clients = append(clients, conn)
