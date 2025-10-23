@@ -1,4 +1,4 @@
-package server
+package task_manager
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"ismismcube-backend/internal/toolkit"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -78,7 +79,7 @@ func (tm *TaskManager) CreateChatTask(content []byte, websocketID string) {
 	}()
 }
 
-func (tm *TaskManager) RegisterTaskConnection(websocketID string, conn *websocket.Conn) {
+func (tm *TaskManager) RegisterTaskConnection(websocketID string, conn *websocket.Conn) error {
 	tm.taskMutex.Lock()
 	defer tm.taskMutex.Unlock()
 	if task, exists := tm.pendingTasks[websocketID]; exists {
@@ -89,13 +90,14 @@ func (tm *TaskManager) RegisterTaskConnection(websocketID string, conn *websocke
 		go tm.sendTaskPosition(task, len(tm.waitingTasks)-1)
 		// 触发任务调度
 		go tm.checkTasks()
-		return
+		return nil
 	}
 	// 执行中的任务允许重连
 	if task, exists := tm.executingTasks[websocketID]; exists {
 		task.WebSocketConn = conn
-		return
+		return nil
 	}
+	return fmt.Errorf("task not found")
 }
 
 func (tm *TaskManager) UnregisterTaskConnection(websocketID string) {
@@ -222,14 +224,19 @@ func (tm *TaskManager) callLLM(task *ChatTask) {
 		}
 		modelName = config.LLMConfigure.AvailableModels[0]
 	}
+	modelName = strings.TrimSpace(modelName)
 	baseApiUrl := config.LLMConfigure.BaseApiUrl
 	var LLMApiUrl string
-	domainStart := bytes.Index([]byte(baseApiUrl), []byte("://")) + 3
-	pathStart := bytes.IndexByte([]byte(baseApiUrl[domainStart:]), '/')
-	if pathStart == -1 {
-		LLMApiUrl = baseApiUrl + "/" + modelName
+	if modelName != "" {
+		domainStart := bytes.Index([]byte(baseApiUrl), []byte("://")) + 3
+		pathStart := bytes.IndexByte([]byte(baseApiUrl[domainStart:]), '/')
+		if pathStart == -1 {
+			LLMApiUrl = baseApiUrl + "/" + modelName
+		} else {
+			LLMApiUrl = baseApiUrl[:domainStart+pathStart] + "/" + modelName + baseApiUrl[domainStart+pathStart:]
+		}
 	} else {
-		LLMApiUrl = baseApiUrl[:domainStart+pathStart] + "/" + modelName + baseApiUrl[domainStart+pathStart:]
+		LLMApiUrl = baseApiUrl
 	}
 	client := &http.Client{
 		Timeout: time.Duration(config.LLMConfigure.Timeout) * time.Minute,

@@ -2,7 +2,7 @@ package ws
 
 import (
 	"ismismcube-backend/internal/config"
-	"ismismcube-backend/internal/server"
+	"ismismcube-backend/internal/manager/task_manager"
 	"log"
 	"net"
 	"net/http"
@@ -27,11 +27,17 @@ func HandleChatTask(w http.ResponseWriter, r *http.Request) {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
 	}
-	taskManager := server.GetTaskManager()
-	taskManager.RegisterTaskConnection(websocketID, conn)
+	taskManager := task_manager.GetTaskManager()
+	err = taskManager.RegisterTaskConnection(websocketID, conn)
+	if err != nil {
+		conn.WriteMessage(websocket.TextMessage, []byte("task not found"))
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		conn.Close()
+		return
+	}
 	conn.SetReadDeadline(time.Now().Add(config.WSPongWaitFast))
 	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(config.WSPingIntervalFast))
+		conn.SetReadDeadline(time.Now().Add(config.WSPongWaitFast))
 		return nil
 	})
 	ticker := time.NewTicker(config.WSPingIntervalFast)

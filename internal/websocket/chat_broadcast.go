@@ -2,7 +2,7 @@ package ws
 
 import (
 	"ismismcube-backend/internal/config"
-	"ismismcube-backend/internal/server"
+	"ismismcube-backend/internal/manager/task_manager"
 	"ismismcube-backend/internal/toolkit"
 	"log"
 	"net"
@@ -131,8 +131,8 @@ func HandleChatBroadcast(w http.ResponseWriter, r *http.Request) {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
 	}
-	waiting, executing := server.GetTaskManager().GetQueueCount()
-	broadcastFlag := server.GetTaskManager().GetBroadcastFlag()
+	waiting, executing := task_manager.GetTaskManager().GetQueueCount()
+	broadcastFlag := task_manager.GetTaskManager().GetBroadcastFlag()
 	RegisterChatClient(conn, waiting, executing, broadcastFlag)
 	conn.SetReadDeadline(time.Now().Add(config.WSPongWaitSlow))
 	conn.SetPongHandler(func(string) error {

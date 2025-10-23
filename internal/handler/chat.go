@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
-	"ismismcube-backend/internal/server"
+	"ismismcube-backend/internal/manager/task_manager"
 	"net/http"
 )
 
@@ -24,7 +24,7 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	websocketID := generateWebSocketID()
-	server.GetTaskManager().CreateChatTask(body, websocketID)
+	task_manager.GetTaskManager().CreateChatTask(body, websocketID)
 	response := map[string]string{
 		"websocket_id": websocketID,
 	}
