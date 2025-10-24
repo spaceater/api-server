@@ -8,9 +8,10 @@ func GetExecutedTaskCount() (int, error) {
 	return model.GetAIExecutedTaskCount()
 }
 
-func AddExecutedTask(visitorIP string) (*model.AIExecutedTask, error) {
+func AddExecutedTask(visitorIP, userAgent string) (*model.AIExecutedTask, error) {
 	task := &model.AIExecutedTask{
 		VisitorIP: visitorIP,
+		UserAgent: userAgent,
 	}
 	return model.AddAIExecutedTask(task)
 }

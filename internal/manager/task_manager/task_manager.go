@@ -9,7 +9,6 @@ import (
 	"ismismcube-backend/internal/server/ai_server"
 	"ismismcube-backend/internal/toolkit"
 	"log"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -20,6 +19,8 @@ import (
 
 type ChatTask struct {
 	CreatedAt     time.Time       `json:"created_at"`
+	ClientIP      string          `json:"client_ip"`
+	UserAgent     string          `json:"user_agent"`
 	Content       []byte          `json:"-"`
 	WebSocketID   string          `json:"websocket_id"`
 	WebSocketConn *websocket.Conn `json:"-"`
@@ -61,9 +62,11 @@ func InitTaskManager(broadcaster QueueBroadcaster) {
 	taskManager.broadcaster = broadcaster
 }
 
-func (tm *TaskManager) CreateChatTask(content []byte, websocketID string) {
+func (tm *TaskManager) CreateChatTask(content []byte, websocketID string, clientIP, userAgent string) {
 	task := &ChatTask{
 		CreatedAt:   time.Now(),
+		ClientIP:    clientIP,
+		UserAgent:   userAgent,
 		Content:     content,
 		WebSocketID: websocketID,
 	}
@@ -146,16 +149,7 @@ func (tm *TaskManager) checkTasks() {
 }
 
 func (tm *TaskManager) executeTask(task *ChatTask) {
-	var clientIP string
-	remoteAddr := task.WebSocketConn.RemoteAddr().String()
-	clientIP, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		clientIP = remoteAddr
-	}
-	ai_server.AddExecutedTask(clientIP)
-	if err != nil {
-		log.Printf("Failed to record AI executed task: %v", err)
-	}
+	ai_server.AddExecutedTask(task.ClientIP, task.UserAgent)
 	defer func() {
 		tm.taskMutex.Lock()
 		conn := task.WebSocketConn

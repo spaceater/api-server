@@ -10,6 +10,7 @@ type AIExecutedTask struct {
 	ID        int       `json:"id"`
 	Time      time.Time `json:"time"`
 	VisitorIP string    `json:"visitor_ip"`
+	UserAgent string    `json:"user_agent"`
 }
 
 func GetAIExecutedTaskCount() (int, error) {
@@ -24,8 +25,8 @@ func GetAIExecutedTaskCount() (int, error) {
 
 func AddAIExecutedTask(task *AIExecutedTask) (*AIExecutedTask, error) {
 	result, err := config.DB.Exec(
-		"INSERT INTO ai_executed_tasks (visitor_ip) VALUES (?)",
-		task.VisitorIP,
+		"INSERT INTO ai_executed_tasks (visitor_ip, user_agent) VALUES (?, ?)",
+		task.VisitorIP, task.UserAgent,
 	)
 	if err != nil {
 		log.Printf("Error adding AI executed task: %v", err)
@@ -44,7 +45,7 @@ func AddAIExecutedTask(task *AIExecutedTask) (*AIExecutedTask, error) {
 
 func GetAIExecutedTasks(limit, offset int) ([]AIExecutedTask, error) {
 	rows, err := config.DB.Query(
-		"SELECT id, time, visitor_ip FROM ai_executed_tasks ORDER BY time DESC LIMIT ? OFFSET ?",
+		"SELECT id, time, visitor_ip, user_agent FROM ai_executed_tasks ORDER BY time DESC LIMIT ? OFFSET ?",
 		limit, offset,
 	)
 	if err != nil {
@@ -56,7 +57,7 @@ func GetAIExecutedTasks(limit, offset int) ([]AIExecutedTask, error) {
 	var tasks []AIExecutedTask
 	for rows.Next() {
 		var task AIExecutedTask
-		err := rows.Scan(&task.ID, &task.Time, &task.VisitorIP)
+		err := rows.Scan(&task.ID, &task.Time, &task.VisitorIP, &task.UserAgent)
 		if err != nil {
 			log.Printf("Error scanning AI executed task: %v", err)
 			return nil, err
