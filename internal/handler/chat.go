@@ -3,11 +3,15 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"io"
 	"ismismcube-backend/internal/manager/task_manager"
+	"ismismcube-backend/internal/utility"
 	"net/http"
 )
+
+type websocketCreatedResponse struct {
+	WebSocketID string `json:"websocket_id"`
+}
 
 func ChatHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -24,12 +28,13 @@ func ChatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	websocketID := generateWebSocketID()
-	task_manager.GetTaskManager().CreateChatTask(body, websocketID)
-	response := map[string]string{
-		"websocket_id": websocketID,
+	clientIP := utility.GetRealIP(r)
+	userAgent := r.Header.Get("User-Agent")
+	if userAgent == "" {
+		userAgent = "Unknown"
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	task_manager.GetTaskManager().CreateChatTask(body, websocketID, clientIP, userAgent)
+	utility.WriteJSON(w, http.StatusCreated, websocketCreatedResponse{WebSocketID: websocketID})
 	r.Body.Close()
 }
 

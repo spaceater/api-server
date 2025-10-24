@@ -2,6 +2,7 @@ package handler
 
 import (
 	"ismismcube-backend/internal/server/ai_server"
+	"ismismcube-backend/internal/utility"
 	"net/http"
 )
 
@@ -12,8 +13,8 @@ type ExecutedTaskResponse struct {
 func ExecutedTaskHandler(w http.ResponseWriter, r *http.Request) {
 	executedTask, err := ai_server.GetExecutedTaskCount()
 	if err != nil {
-		sendResponse(w, ExecutedTaskResponse{ExecutedTask: -1})
+		utility.WriteJSON(w, http.StatusInternalServerError, ExecutedTaskResponse{ExecutedTask: -1})
 		return
 	}
-	sendResponse(w, ExecutedTaskResponse{ExecutedTask: executedTask})
+	utility.WriteJSON(w, http.StatusOK, ExecutedTaskResponse{ExecutedTask: executedTask})
 }

@@ -1,16 +1,14 @@
 package handler
 
 import (
-	"encoding/json"
-	"net/http"
+	"ismismcube-backend/internal/utility"
+  "net/http"
 )
 
+type pingResponse struct {
+	Message string `json:"message"`
+	Status  string `json:"status"`
+}
 func Ping(w http.ResponseWriter, r *http.Request) {
-	response := map[string]interface{}{
-		"message": "pong",
-		"status":  "ok",
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	utility.WriteJSON(w, http.StatusOK, pingResponse{Message: "pong", Status: "ok"})
 }
