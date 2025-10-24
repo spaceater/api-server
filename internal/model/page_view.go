@@ -2,69 +2,78 @@ package model
 
 import (
 	"ismismcube-backend/internal/config"
-	"os"
-	"strconv"
-	"sync"
+	"log"
+	"time"
 )
 
-type PageViewModel struct {
-	mutex sync.Mutex
+type PageView struct {
+	ID        int       `json:"id"`
+	Time      time.Time `json:"time"`
+	VisitorIP string    `json:"visitor_ip"`
+	UserAgent string    `json:"user_agent"`
 }
 
-var PageView *PageViewModel
-
-func init() {
-	PageView = &PageViewModel{}
+func GetPageViewCount() (int, error) {
+	var count int
+	err := config.DB.QueryRow("SELECT COUNT(*) FROM ismismcube_page_views").Scan(&count)
+	if err != nil {
+		log.Printf("Error getting page view count: %v", err)
+		return -1, err
+	}
+	return count, nil
 }
 
-func (pvm *PageViewModel) Get() (int, error) {
-	pvm.mutex.Lock()
-	defer pvm.mutex.Unlock()
-	pageViewFile := config.PageViewFile
-	data, err := os.ReadFile(pageViewFile)
+func AddPageView(view *PageView) (*PageView, error) {
+	result, err := config.DB.Exec(
+		"INSERT INTO ismismcube_page_views (visitor_ip, user_agent) VALUES (?, ?)",
+		view.VisitorIP, view.UserAgent,
+	)
 	if err != nil {
-		if os.IsNotExist(err) {
-			if err := os.WriteFile(pageViewFile, []byte("0"), 0644); err != nil {
-				return -1, err
-			}
-			return 0, nil
-		}
-		return -1, err
+		log.Printf("Error adding page view: %v", err)
+		return nil, err
 	}
-	pageView, err := strconv.Atoi(string(data))
+
+	id, err := result.LastInsertId()
 	if err != nil {
-		if err := os.WriteFile(pageViewFile, []byte("0"), 0644); err != nil {
-			return -1, err
-		}
-		return 0, nil
+		log.Printf("Error getting last insert ID: %v", err)
+		return nil, err
 	}
-	return pageView, nil
+
+	view.ID = int(id)
+	return view, nil
 }
 
-func (pvm *PageViewModel) GetAndIncrement() (int, error) {
-	pvm.mutex.Lock()
-	defer pvm.mutex.Unlock()
-	pageViewFile := config.PageViewFile
-	data, err := os.ReadFile(pageViewFile)
+func GetPageViews(limit, offset int) ([]PageView, error) {
+	rows, err := config.DB.Query(
+		"SELECT id, time, visitor_ip, user_agent FROM ismismcube_page_views ORDER BY time DESC LIMIT ? OFFSET ?",
+		limit, offset,
+	)
 	if err != nil {
-		if os.IsNotExist(err) {
-			if err := os.WriteFile(pageViewFile, []byte("1"), 0644); err != nil {
-				return -1, err
-			}
-			return 1, nil
-		}
-		return -1, err
+		log.Printf("Error getting page views: %v", err)
+		return nil, err
 	}
-	pageView, err := strconv.Atoi(string(data))
+	defer rows.Close()
+
+	var views []PageView
+	for rows.Next() {
+		var view PageView
+		err := rows.Scan(&view.ID, &view.Time, &view.VisitorIP, &view.UserAgent)
+		if err != nil {
+			log.Printf("Error scanning page view: %v", err)
+			return nil, err
+		}
+		views = append(views, view)
+	}
+
+	return views, nil
+}
+
+func DeletePageView(id int) error {
+	_, err := config.DB.Exec("DELETE FROM ismismcube_page_views WHERE id = ?", id)
 	if err != nil {
-		if err := os.WriteFile(pageViewFile, []byte("1"), 0644); err != nil {
-			return -1, err
-		}
-		return 1, nil
+		log.Printf("Error deleting page view: %v", err)
+		return err
 	}
-	pageView++
-	if err := os.WriteFile(pageViewFile, []byte(strconv.Itoa(pageView)), 0644); err != nil {
-		return -1, err
-	}
-	return pageView, nil
+
+	return nil
 }

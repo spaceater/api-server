@@ -52,7 +52,11 @@ go run main.go
 可以通过环境变量进行配置：
 
 - `PORT`: 服务器端口（默认: 2998）
-- `PAGE_VIEW_FILE`: 页面访问量存储文件（默认: resources/page-view.txt）
+- `DB_HOST`: 数据库主机地址（默认: 106.14.192.75）
+- `DB_PORT`: 数据库端口（默认: 3306）
+- `DB_USERNAME`: 数据库用户名（默认: ismismcube_connector）
+- `DB_PASSWORD`: 数据库密码（默认: test）
+- `DB_DATABASE`: 数据库名称（默认: ismismcube_test）
 
 ## 项目结构
 
@@ -63,15 +67,17 @@ go run main.go
 ### 内部模块
 - `internal/api/router.go` - API 路由注册和初始化
 - `internal/config/config.go` - 配置管理，支持环境变量
-- `internal/handlers/` - 请求处理器
-  - `pageview.go` - 页面访问量统计处理
+- `internal/handler/` - 请求处理器
+  - `page_view.go` - 页面浏览量统计处理
   - `ping.go` - 健康检查接口
 - `internal/middleware/cors.go` - CORS 和缓存控制中间件
 - `internal/router/router.go` - 自定义路由系统实现
 - `internal/websocket/ismismcube.go` - WebSocket 连接管理
 
+### 数据库
+- 使用MySQL数据库存储页面访问记录和AI任务执行记录
+
 ### 资源文件
-- `resources/page-view.txt` - 页面访问量数据存储
 - `test/` - 测试相关文件
 
 ## 许可证

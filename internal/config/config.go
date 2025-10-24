@@ -27,6 +27,7 @@ func Init() {
 		log.Printf("No config file provided, using default values")
 	}
 	InitServerConfig(configData)
+  InitDBConfig(configData)
 	InitWSConfig(configData)
 	InitLLMConfig(configData)
 }
@@ -84,7 +85,7 @@ func getConfigInt(jsonKey string, configData map[string]interface{}, defaultValu
 			result = defaultValue
 		}
 	}
-  log.Printf(`[Config] %s = %d`, jsonKey, result)
+	log.Printf(`[Config] %s = %d`, jsonKey, result)
 	return result
 }
 

@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"io"
 	"ismismcube-backend/internal/config"
-	"ismismcube-backend/internal/model"
+	"ismismcube-backend/internal/server/ai_server"
 	"ismismcube-backend/internal/toolkit"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -145,7 +146,16 @@ func (tm *TaskManager) checkTasks() {
 }
 
 func (tm *TaskManager) executeTask(task *ChatTask) {
-	model.ExecutedTask.GetAndIncrement()
+	var clientIP string
+	remoteAddr := task.WebSocketConn.RemoteAddr().String()
+	clientIP, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		clientIP = remoteAddr
+	}
+	ai_server.AddExecutedTask(clientIP)
+	if err != nil {
+		log.Printf("Failed to record AI executed task: %v", err)
+	}
 	defer func() {
 		tm.taskMutex.Lock()
 		conn := task.WebSocketConn
