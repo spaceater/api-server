@@ -2,7 +2,7 @@ package ws
 
 import (
 	"ismismcube-backend/internal/config"
-	"ismismcube-backend/internal/toolkit"
+	"ismismcube-backend/internal/utility"
 	"log"
 	"net"
 	"net/http"
@@ -37,7 +37,7 @@ func UnregisterIsmismcubeClient(conn *websocket.Conn) {
 
 func broadcastOnlineCount() {
 	ismismcubeClientsMux.RLock()
-	data := &toolkit.MessageData{
+	data := &utility.MessageData{
 		Type: "broadcast",
 		Data: OnlineCountData{
 			Online: len(ismismcubeClients),

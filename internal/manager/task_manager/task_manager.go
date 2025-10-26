@@ -7,7 +7,7 @@ import (
 	"io"
 	"ismismcube-backend/internal/config"
 	"ismismcube-backend/internal/server/ai_server"
-	"ismismcube-backend/internal/toolkit"
+	"ismismcube-backend/internal/utility"
 	"log"
 	"net/http"
 	"strings"
@@ -174,9 +174,9 @@ func (tm *TaskManager) executeTask(task *ChatTask) {
 		conn := task.WebSocketConn
 		tm.taskMutex.RUnlock()
 		if conn != nil {
-			data := &toolkit.MessageData{
+			data := &utility.MessageData{
 				Type: "error",
-				Data: toolkit.ErrorData{
+				Data: utility.ErrorData{
 					Error: fmt.Sprintf("Task timed out after %d minutes", timeoutMinutes),
 				},
 			}
@@ -201,9 +201,9 @@ func (tm *TaskManager) callLLM(task *ChatTask) {
 	}
 	var requestData map[string]interface{}
 	if err := json.Unmarshal(task.Content, &requestData); err != nil {
-		data := &toolkit.MessageData{
+		data := &utility.MessageData{
 			Type: "error",
-			Data: toolkit.ErrorData{Error: "Failed to parse request content"},
+			Data: utility.ErrorData{Error: "Failed to parse request content"},
 		}
 		msg, _ := data.ToBytes()
 		task.WriteMutex.Lock()
@@ -216,9 +216,9 @@ func (tm *TaskManager) callLLM(task *ChatTask) {
 		modelName = model
 	} else {
 		if len(config.LLMConfigure.AvailableModels) == 0 {
-			data := &toolkit.MessageData{
+			data := &utility.MessageData{
 				Type: "error",
-				Data: toolkit.ErrorData{Error: "No available models"},
+				Data: utility.ErrorData{Error: "No available models"},
 			}
 			msg, _ := data.ToBytes()
 			task.WriteMutex.Lock()
@@ -247,9 +247,9 @@ func (tm *TaskManager) callLLM(task *ChatTask) {
 	}
 	req, err := http.NewRequest("POST", LLMApiUrl, bytes.NewBuffer(task.Content))
 	if err != nil {
-		data := &toolkit.MessageData{
+		data := &utility.MessageData{
 			Type: "error",
-			Data: toolkit.ErrorData{Error: "Failed to create request"},
+			Data: utility.ErrorData{Error: "Failed to create request"},
 		}
 		msg, _ := data.ToBytes()
 		task.WriteMutex.Lock()
@@ -265,9 +265,9 @@ func (tm *TaskManager) callLLM(task *ChatTask) {
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Println("Failed to send request to AI API", err)
-		data := &toolkit.MessageData{
+		data := &utility.MessageData{
 			Type: "error",
-			Data: toolkit.ErrorData{Error: "Failed to send request to AI API"},
+			Data: utility.ErrorData{Error: "Failed to send request to AI API"},
 		}
 		msg, _ := data.ToBytes()
 		task.WriteMutex.Lock()
@@ -278,9 +278,9 @@ func (tm *TaskManager) callLLM(task *ChatTask) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		errorBody, _ := io.ReadAll(resp.Body)
-		data := &toolkit.MessageData{
+		data := &utility.MessageData{
 			Type: "error",
-			Data: toolkit.ErrorData{
+			Data: utility.ErrorData{
 				Error: fmt.Sprintf("AI API returned status %d: %s", resp.StatusCode, string(errorBody)),
 			},
 		}
@@ -340,7 +340,7 @@ func (tm *TaskManager) sendTaskPosition(task *ChatTask, position int) {
 	if conn == nil {
 		return
 	}
-	data := &toolkit.MessageData{
+	data := &utility.MessageData{
 		Type: "broadcast",
 		Data: QueuePositionData{
 			QueuePosition: position,

@@ -3,7 +3,7 @@ package ws
 import (
 	"ismismcube-backend/internal/config"
 	"ismismcube-backend/internal/manager/task_manager"
-	"ismismcube-backend/internal/toolkit"
+	"ismismcube-backend/internal/utility"
 	"log"
 	"net"
 	"net/http"
@@ -42,7 +42,7 @@ func (w *WebSocketBroadcaster) BroadcastQueueStats(waiting, executing int, broad
 		clients = append(clients, conn)
 	}
 	chatClientsMux.RUnlock()
-	data := &toolkit.MessageData{
+	data := &utility.MessageData{
 		Type: "broadcast",
 		Data: QueueStatsData{
 			WaitingCount:   waiting,
@@ -64,7 +64,7 @@ func RegisterChatClient(conn *websocket.Conn, waiting, executing int, broadcastF
 	chatClients[conn] = &ClientInfo{}
 	chatClientsMux.Unlock()
 	// 发送队列统计信息
-	statsData := &toolkit.MessageData{
+	statsData := &utility.MessageData{
 		Type: "broadcast",
 		Data: QueueStatsData{
 			WaitingCount:   waiting,
@@ -78,7 +78,7 @@ func RegisterChatClient(conn *websocket.Conn, waiting, executing int, broadcastF
 	}
 	go sendQueueStats(conn, statsMsg)
 	// 发送LLM配置信息
-	llmConfigData := &toolkit.MessageData{
+	llmConfigData := &utility.MessageData{
 		Type: "server-config",
 		Data: LLMConfigData{
 			MaxConcurrentTasks: config.LLMConfigure.MaxConcurrentTasks,
@@ -91,7 +91,7 @@ func RegisterChatClient(conn *websocket.Conn, waiting, executing int, broadcastF
 	}
 	go sendQueueStats(conn, llmConfigMsg)
 	// 发送聊天参数配置
-	chatConfigData := &toolkit.MessageData{
+	chatConfigData := &utility.MessageData{
 		Type: "chat-config",
 		Data: config.ChatParameters,
 	}
