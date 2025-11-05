@@ -5,21 +5,21 @@ import (
 )
 
 func GetPageViewCount() (int, error) {
-	return model.GetPageViewCount()
+	return model.GetIsmismcubePageViewCount()
 }
 
-func AddPageView(visitorIP, userAgent string) (*model.PageView, error) {
-	view := &model.PageView{
+func AddPageView(visitorIP, userAgent string) (*model.IsmismcubePageView, error) {
+	view := &model.IsmismcubePageView{
 		VisitorIP: visitorIP,
 		UserAgent: userAgent,
 	}
-	return model.AddPageView(view)
+	return model.AddIsmismcubePageView(view)
 }
 
-func GetPageViews(limit, offset int) ([]model.PageView, error) {
-	return model.GetPageViews(limit, offset)
+func GetPageViews(limit, offset int) ([]model.IsmismcubePageView, error) {
+	return model.GetIsmismcubePageViews(limit, offset)
 }
 
 func DeletePageView(id int) error {
-	return model.DeletePageView(id)
+	return model.DeleteIsmismcubePageView(id)
 }

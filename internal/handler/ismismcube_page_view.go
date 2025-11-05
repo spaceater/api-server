@@ -6,16 +6,16 @@ import (
 	"net/http"
 )
 
-type PageViewResponse struct {
+type IsmismcubePageViewResponse struct {
 	PageView int `json:"page_view"`
 }
 
-func PageViewHandler(w http.ResponseWriter, r *http.Request) {
+func IsmismcubePageViewHandler(w http.ResponseWriter, r *http.Request) {
 	pageView, err := ismismcube_server.GetPageViewCount()
 	if err != nil {
-		utility.WriteJSON(w, http.StatusInternalServerError, PageViewResponse{PageView: -1})
+		utility.WriteJSON(w, http.StatusInternalServerError, IsmismcubePageViewResponse{PageView: -1})
 	} else {
-		utility.WriteJSON(w, http.StatusOK, PageViewResponse{PageView: pageView + 1})
+		utility.WriteJSON(w, http.StatusOK, IsmismcubePageViewResponse{PageView: pageView + 1})
 	}
 
 	clientIP := utility.GetRealIP(r)

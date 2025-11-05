@@ -4,18 +4,21 @@ import (
 	"ismismcube-backend/internal/handler"
 	"ismismcube-backend/internal/middleware"
 	"ismismcube-backend/internal/router"
-	"ismismcube-backend/internal/websocket"
+  "ismismcube-backend/internal/websocket"
 )
 
 func RegisterApi() {
 	router.Url("/ping", handler.Ping)
-	router.UrlGroup("/api",
-		router.Url("/page_view", handler.PageViewHandler).Use(middleware.NoCache),
-    router.Url("/executed_task", handler.ExecutedTaskHandler).Use(middleware.NoCache),
+	router.UrlGroup("/home",
+		router.Url("/page_view", handler.HomePageViewHandler).Use(middleware.NoCache),
+	)
+	router.UrlGroup("/ismismcube",
+		router.Url("/page_view", handler.IsmismcubePageViewHandler).Use(middleware.NoCache),
+		router.Url("/online", ws.HandleIsmismcubeOnline),
+	)
+	router.UrlGroup("/ai",
+		router.Url("/executed_task", handler.ExecutedTaskHandler).Use(middleware.NoCache),
 		router.Url("/send_chat", handler.ChatHandler),
-	).Use(middleware.CORS)
-	router.UrlGroup("/ws",
-		router.Url("/ismismcube_online", ws.HandleIsmismcubeOnline),
 		router.Url("/chat_broadcast", ws.HandleChatBroadcast),
 		router.Url("/chat_task", ws.HandleChatTask),
 	)

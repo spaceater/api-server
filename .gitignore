@@ -44,7 +44,7 @@ Thumbs.db
 test/
 
 # build
-backend
+/deployment
 
 # deploy
 *.vbs
