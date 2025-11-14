@@ -2,6 +2,7 @@ package ismismcube_server
 
 import (
 	"ismismcube-backend/internal/model"
+  "ismismcube-backend/internal/websocket"
 )
 
 func GetPageViewCount() (int, error) {
@@ -22,4 +23,13 @@ func GetPageViews(limit, offset int) ([]model.IsmismcubePageView, error) {
 
 func DeletePageView(id int) error {
 	return model.DeleteIsmismcubePageView(id)
+}
+
+func SendDanmu(clientIP, content string) error {
+	err := model.CheckAndSetRateLimit(clientIP)
+	if err != nil {
+		return err
+	}
+	ws.BroadcastIsmismcubeDanmu(content)
+	return nil
 }

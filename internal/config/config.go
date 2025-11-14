@@ -27,7 +27,8 @@ func Init() {
 		log.Printf("No config file provided, using default values")
 	}
 	InitServerConfig(configData)
-  InitDBConfig(configData)
+	InitDBConfig(configData)
+	InitRedisConfig(configData)
 	InitWSConfig(configData)
 	InitLLMConfig(configData)
 }

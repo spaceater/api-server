@@ -9,11 +9,11 @@ import (
 )
 
 type DBConfig struct {
-	Host     string `json:"db_host"`
-	Port     int    `json:"db_port"`
-	Name     string `json:"db_name"`
-	Username string `json:"db_username"`
-	Password string `json:"db_password"`
+	Host     string `json:"sql_host"`
+	Port     int    `json:"sql_port"`
+	Name     string `json:"sql_name"`
+	Username string `json:"sql_username"`
+	Password string `json:"sql_password"`
 }
 
 var (

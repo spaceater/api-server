@@ -15,6 +15,7 @@ func RegisterApi() {
 	router.UrlGroup("/ismismcube",
 		router.Url("/page_view", handler.IsmismcubePageViewHandler).Use(middleware.NoCache),
 		router.Url("/online", ws.HandleIsmismcubeOnline),
+    router.Url("/send_danmu", handler.SendDanmuHandler),
 	)
 	router.UrlGroup("/ai",
 		router.Url("/executed_task", handler.ExecutedTaskHandler).Use(middleware.NoCache),

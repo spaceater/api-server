@@ -139,10 +139,13 @@ func HandleChatBroadcast(w http.ResponseWriter, r *http.Request) {
 		conn.SetReadDeadline(time.Now().Add(config.WSPongWaitSlow))
 		return nil
 	})
+
 	ticker := time.NewTicker(config.WSPingIntervalSlow)
+	done := make(chan struct{})
 	go func() {
 		var isNormalClose bool
 		defer func() {
+			close(done)
 			ticker.Stop()
 			if !isNormalClose {
 				if tcpConn, ok := conn.UnderlyingConn().(*net.TCPConn); ok {
@@ -158,15 +161,26 @@ func HandleChatBroadcast(w http.ResponseWriter, r *http.Request) {
 				if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 					isNormalClose = true
 				}
-				break
+				return
 			}
 		}
 	}()
 	go func() {
 		defer ticker.Stop()
 		for {
-			<-ticker.C
-			conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(config.WSWriteWait))
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				select {
+				case <-done:
+					return
+				default:
+					if err := conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(config.WSWriteWait)); err != nil {
+						return
+					}
+				}
+			}
 		}
 	}()
 }
