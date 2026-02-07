@@ -40,11 +40,10 @@ Thumbs.db
 .env.local
 .env.production
 
-# Test folder
+# Test and Production folder
 test/
-
-# build
-/deployment
+production/
 
 # deploy
 *.vbs
+*.sh
